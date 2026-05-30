@@ -449,7 +449,7 @@
   const DEFAULT_ELO  = 1000;
   const K_FACTOR     = 32;
   const STORAGE_KEY  = 'pokemon-elo-v1';
-  const IDS_KEY      = 'pokemon-elo-ids-v4';
+  const IDS_KEY      = 'pokemon-elo-ids-v5';
   const IMG_BASE     = 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/';
 
   // Fragments: exclude any Pokémon whose name contains these substrings
@@ -510,6 +510,17 @@
     'cherrim-sunshine',
     // Xerneas modes — in-battle appearance toggle, same stats
     'xerneas-active','xerneas-neutral',
+    // Eternatus-Eternamax — unobtainable story form, no artwork
+    'eternatus-eternamax',
+    // Pikachu cosplay/contest variants — same stats as base Pikachu
+    'pikachu-rock-star','pikachu-belle','pikachu-pop-star','pikachu-phd',
+    'pikachu-libre','pikachu-cosplay','pikachu-original',
+    // Sinistea/Polteageist antique — cosmetic authenticity variant, same stats
+    'sinistea-antique','polteageist-antique',
+    // Basculin-White-Striped — same stats as other stripes
+    'basculin-white-striped',
+    // Rockruff-Own-Tempo — same stats as regular Rockruff
+    'rockruff-own-tempo',
     // Ability-triggered in-battle forms
     'aegislash-blade',      // Stance Change
     'wishiwashi-school',    // Schooling
