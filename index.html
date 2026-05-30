@@ -606,9 +606,10 @@
     const data = await res.json();
     return {
       id,
-      name:  data.name,
-      types: data.types.map(t => t.type.name),
-      image: `${IMG_BASE}${id}.png`,
+      name:   data.name,
+      types:  data.types.map(t => t.type.name),
+      image:  `${IMG_BASE}${id}.png`,
+      sprite: data.sprites.front_default || null, // reliable fallback from API
     };
   }
 
@@ -651,7 +652,11 @@
     renderArenaLoading();
 
     try {
-      if (!pokemonIds.length) pokemonIds = await loadPokemonIds();
+      if (!pokemonIds.length) {
+        pokemonIds = await loadPokemonIds();
+        purgeFilteredRatings(pokemonIds);
+        renderLeaderboard();
+      }
 
       const idA = randomId();
       const idB = randomId([idA]);
@@ -670,10 +675,22 @@
 
   function storeMetadata(poke) {
     if (!ratings[poke.id]) ratings[poke.id] = {};
-    ratings[poke.id].name  = poke.name;
-    ratings[poke.id].types = poke.types;
-    // Don't overwrite existing elo
+    ratings[poke.id].name   = poke.name;
+    ratings[poke.id].types  = poke.types;
+    ratings[poke.id].sprite = poke.sprite;
     if (ratings[poke.id].elo === undefined) ratings[poke.id].elo = DEFAULT_ELO;
+  }
+
+  function purgeFilteredRatings(validIds) {
+    const validSet = new Set(validIds);
+    let changed = false;
+    Object.keys(ratings).forEach(id => {
+      if (!validSet.has(Number(id))) {
+        delete ratings[id];
+        changed = true;
+      }
+    });
+    if (changed) saveRatings();
   }
 
   /* ─────────────────────────────────────────
@@ -690,7 +707,11 @@
     img.src   = poke.image;
     img.alt   = poke.name;
     img.width = 160; img.height = 160;
-    img.onerror = () => { img.src = `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/${poke.id}.png`; };
+    img.onerror = () => {
+      img.onerror = null;
+      if (poke.sprite) img.src = poke.sprite;
+      else img.style.opacity = '0';
+    };
 
     const name = document.createElement('div');
     name.className = 'poke-name';
@@ -784,7 +805,11 @@
       img.className = 'lb-img';
       img.src = `${IMG_BASE}${id}.png`;
       img.alt = data.name;
-      img.onerror = () => { img.src = `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/${id}.png`; };
+      img.onerror = () => {
+        img.onerror = null;
+        if (data.sprite) img.src = data.sprite;
+        else img.style.opacity = '0';
+      };
 
       const name = document.createElement('div');
       name.className = 'lb-name';
