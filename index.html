@@ -216,6 +216,33 @@
     }
     @keyframes spin { to { transform: rotate(360deg); } }
 
+    /* ── Mode bar ── */
+    #mode-bar {
+      display: flex;
+      background: var(--card);
+      border-radius: 999px;
+      padding: 4px;
+      gap: 2px;
+      margin-bottom: 20px;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+
+    .mode-btn {
+      padding: 7px 16px;
+      border: none;
+      border-radius: 999px;
+      font-size: .82rem;
+      font-weight: 700;
+      cursor: pointer;
+      background: transparent;
+      color: var(--muted);
+      transition: background .15s, color .15s, transform .15s;
+      white-space: nowrap;
+    }
+    .mode-btn:hover  { color: var(--text); transform: none; box-shadow: none; }
+    .mode-btn.active { background: var(--blue); color: #fff; }
+
     /* ── Controls ── */
     #controls {
       display: flex;
@@ -426,6 +453,14 @@
   <p>Click the Pokémon you prefer to update their ELO ratings</p>
 </header>
 
+<div id="mode-bar">
+  <button class="mode-btn active" data-mode="all">All</button>
+  <button class="mode-btn" data-mode="unseen">Unseen</button>
+  <button class="mode-btn" data-mode="top100">Top 100</button>
+  <button class="mode-btn" data-mode="top50">Top 50</button>
+  <button class="mode-btn" data-mode="top25">Top 25</button>
+</div>
+
 <div id="arena">
   <div class="spinner"></div>
 </div>
@@ -556,6 +591,7 @@
   let pokemonIds = [];            // valid ID pool loaded from API
   let current    = [null, null];  // two Pokémon objects currently shown
   let loading    = false;
+  let mode       = 'all';        // 'all' | 'unseen' | 'top100' | 'top50' | 'top25'
 
   /* ─────────────────────────────────────────
      ELO helpers
@@ -659,8 +695,28 @@
     return ids;
   }
 
+  function getPool() {
+    switch (mode) {
+      case 'unseen':
+        return pokemonIds.filter(id => !ratings[id]);
+      case 'top100':
+      case 'top50':
+      case 'top25': {
+        const n = { top100: 100, top50: 50, top25: 25 }[mode];
+        return Object.entries(ratings)
+          .filter(([, v]) => v.name)
+          .sort(([, a], [, b]) => (b.elo ?? DEFAULT_ELO) - (a.elo ?? DEFAULT_ELO))
+          .slice(0, n)
+          .map(([id]) => Number(id));
+      }
+      default:
+        return pokemonIds;
+    }
+  }
+
   function randomId(exclude = []) {
-    const pool = pokemonIds.filter(id => !exclude.includes(id));
+    const pool = getPool().filter(id => !exclude.includes(id));
+    if (!pool.length) return null;
     return pool[Math.floor(Math.random() * pool.length)];
   }
 
@@ -677,7 +733,13 @@
       }
 
       const idA = randomId();
-      const idB = randomId([idA]);
+      const idB = idA !== null ? randomId([idA]) : null;
+
+      if (idA === null || idB === null) {
+        const label = { unseen: 'unseen Pokémon', top25: 'Top 25', top50: 'Top 50', top100: 'Top 100' }[mode] || '';
+        renderArenaEmpty(`Not enough ${label} Pokémon to match up — vote on more first!`);
+        return;
+      }
 
       const [a, b] = await Promise.all([fetchPokemon(idA), fetchPokemon(idB)]);
       storeMetadata(a);
@@ -792,6 +854,11 @@
     document.getElementById('btn-retry')?.addEventListener('click', loadPair);
   }
 
+  function renderArenaEmpty(msg) {
+    const arena = document.getElementById('arena');
+    arena.innerHTML = `<p style="color:var(--muted);text-align:center;padding:32px 16px">${msg}</p>`;
+  }
+
   /* ─────────────────────────────────────────
      Leaderboard
   ───────────────────────────────────────── */
@@ -891,6 +958,16 @@
   /* ─────────────────────────────────────────
      Event listeners
   ───────────────────────────────────────── */
+  document.querySelectorAll('.mode-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      if (btn.dataset.mode === mode) return;
+      mode = btn.dataset.mode;
+      document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      if (!loading) loadPair();
+    });
+  });
+
   document.getElementById('btn-skip').addEventListener('click', () => {
     if (!loading) loadPair();
   });
