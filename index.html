@@ -1,0 +1,858 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Pokémon ELO Ranker</title>
+  <style>
+    /* ── Reset & base ── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --red:    #cc0000;
+      --yellow: #ffde00;
+      --blue:   #3b4cca;
+      --dark:   #1a1a2e;
+      --card:   #16213e;
+      --card2:  #0f3460;
+      --text:   #e0e0e0;
+      --muted:  #888;
+      --radius: 16px;
+      --shadow: 0 8px 32px rgba(0,0,0,.45);
+    }
+
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: var(--dark);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 24px 16px 48px;
+    }
+
+    /* ── Header ── */
+    header {
+      text-align: center;
+      margin-bottom: 32px;
+    }
+    header h1 {
+      font-size: clamp(1.8rem, 5vw, 2.8rem);
+      font-weight: 900;
+      letter-spacing: -1px;
+      background: linear-gradient(135deg, var(--yellow) 0%, var(--red) 60%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    header p {
+      color: var(--muted);
+      margin-top: 6px;
+      font-size: .95rem;
+    }
+
+    /* ── Battle arena ── */
+    #arena {
+      display: flex;
+      align-items: stretch;
+      gap: 16px;
+      justify-content: center;
+      width: 100%;
+      max-width: 760px;
+      margin-bottom: 24px;
+    }
+
+    .vs-col {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      flex-shrink: 0;
+    }
+
+    .vs-badge {
+      font-size: 1.6rem;
+      font-weight: 900;
+      color: var(--yellow);
+      text-shadow: 0 0 16px rgba(255,222,0,.5);
+    }
+
+    .tie-btn {
+      background: rgba(59,76,202,.25);
+      color: #a0aaff;
+      border: 1px solid rgba(59,76,202,.5);
+      border-radius: 999px;
+      padding: 8px 18px;
+      font-size: .9rem;
+      font-weight: 700;
+      cursor: pointer;
+      user-select: none;
+      -webkit-user-select: none;
+      transition: transform .15s, box-shadow .15s;
+      white-space: nowrap;
+    }
+    .tie-btn:hover  { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(0,0,0,.35); }
+    .tie-btn:active { transform: scale(.96); }
+
+    /* ── Pokémon card ── */
+    .poke-card {
+      flex: 1;
+      min-width: 0;          /* allow shrinking below content size */
+      max-width: 320px;
+      background: var(--card);
+      border: 2px solid transparent;
+      border-radius: var(--radius);
+      padding: 28px 20px 20px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+      cursor: pointer;
+      transition: transform .18s, border-color .18s, box-shadow .18s;
+      box-shadow: var(--shadow);
+      position: relative;
+      overflow: hidden;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+    .poke-card::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(circle at 50% 0%, rgba(255,222,0,.08) 0%, transparent 70%);
+      pointer-events: none;
+    }
+    .poke-card:hover {
+      transform: translateY(-6px) scale(1.03);
+      border-color: var(--yellow);
+      box-shadow: 0 16px 48px rgba(255,222,0,.2);
+    }
+    .poke-card:active { transform: scale(.97); }
+    .poke-card:focus-visible { outline: 3px solid var(--yellow); outline-offset: 3px; }
+
+    .poke-card img {
+      width: 160px;
+      height: 160px;
+      object-fit: contain;
+      image-rendering: crisp-edges;
+      filter: drop-shadow(0 4px 12px rgba(0,0,0,.5));
+      transition: transform .2s;
+      pointer-events: none;
+    }
+    .poke-card:hover img { transform: scale(1.08); }
+
+    .poke-name {
+      font-size: 1.35rem;
+      font-weight: 700;
+      text-transform: capitalize;
+      letter-spacing: .5px;
+    }
+
+    .poke-card-info {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+      width: 100%;
+    }
+
+    .poke-elo {
+      font-size: .85rem;
+      color: var(--yellow);
+      font-weight: 600;
+      background: rgba(255,222,0,.1);
+      border: 1px solid rgba(255,222,0,.25);
+      border-radius: 999px;
+      padding: 2px 10px;
+      width: fit-content;
+    }
+
+    .type-badges {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+    .type-badge {
+      font-size: .72rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .8px;
+      padding: 3px 10px;
+      border-radius: 999px;
+      color: #fff;
+    }
+
+    /* ── Pokémon type colors ── */
+    .type-normal   { background:#a8a878; }
+    .type-fire     { background:#f08030; }
+    .type-water    { background:#6890f0; }
+    .type-electric { background:#f8d030; color:#333; }
+    .type-grass    { background:#78c850; }
+    .type-ice      { background:#98d8d8; color:#333; }
+    .type-fighting { background:#c03028; }
+    .type-poison   { background:#a040a0; }
+    .type-ground   { background:#e0c068; color:#333; }
+    .type-flying   { background:#a890f0; }
+    .type-psychic  { background:#f85888; }
+    .type-bug      { background:#a8b820; }
+    .type-rock     { background:#b8a038; }
+    .type-ghost    { background:#705898; }
+    .type-dragon   { background:#7038f8; }
+    .type-dark     { background:#705848; }
+    .type-steel    { background:#b8b8d0; color:#333; }
+    .type-fairy    { background:#f0a0d0; color:#333; }
+
+    /* ── Loading spinner ── */
+    .spinner {
+      width: 56px; height: 56px;
+      border: 5px solid rgba(255,255,255,.1);
+      border-top-color: var(--yellow);
+      border-radius: 50%;
+      animation: spin .8s linear infinite;
+      margin: 40px auto;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Controls ── */
+    #controls {
+      display: flex;
+      gap: 12px;
+      margin-bottom: 40px;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+
+    button {
+      padding: 10px 28px;
+      border: none;
+      border-radius: 999px;
+      font-size: 1rem;
+      font-weight: 700;
+      cursor: pointer;
+      transition: transform .15s, box-shadow .15s;
+    }
+    button:hover  { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(0,0,0,.35); }
+    button:active { transform: scale(.96); }
+
+    #btn-skip {
+      background: var(--card2);
+      color: var(--text);
+      border: 1px solid rgba(255,255,255,.15);
+    }
+    #btn-reset {
+      background: rgba(204,0,0,.2);
+      color: #ff6b6b;
+      border: 1px solid rgba(204,0,0,.35);
+    }
+
+    /* ── Leaderboard ── */
+    #leaderboard-section {
+      width: 100%;
+      max-width: 680px;
+    }
+    #leaderboard-section h2 {
+      font-size: 1.3rem;
+      font-weight: 800;
+      margin-bottom: 16px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    #leaderboard-section h2 span { color: var(--yellow); }
+
+    #leaderboard {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      max-height: 480px;
+      overflow-y: auto;
+      padding-right: 4px;
+    }
+    /* custom scrollbar */
+    #leaderboard::-webkit-scrollbar { width: 6px; }
+    #leaderboard::-webkit-scrollbar-track { background: transparent; }
+    #leaderboard::-webkit-scrollbar-thumb { background: var(--card2); border-radius: 3px; }
+
+    .lb-row {
+      background: var(--card);
+      border-radius: 12px;
+      padding: 10px 16px;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      transition: background .15s;
+    }
+    .lb-row:hover { background: var(--card2); }
+
+    .lb-rank {
+      font-size: .85rem;
+      font-weight: 700;
+      color: var(--muted);
+      width: 28px;
+      text-align: right;
+      flex-shrink: 0;
+    }
+    .lb-rank.gold   { color: #ffd700; }
+    .lb-rank.silver { color: #c0c0c0; }
+    .lb-rank.bronze { color: #cd7f32; }
+
+    .lb-img {
+      width: 44px; height: 44px;
+      object-fit: contain;
+      flex-shrink: 0;
+    }
+
+    .lb-name {
+      flex: 1;
+      font-weight: 600;
+      text-transform: capitalize;
+      font-size: .95rem;
+    }
+
+    .lb-elo {
+      font-size: .9rem;
+      font-weight: 700;
+      color: var(--yellow);
+    }
+
+    .lb-votes {
+      font-size: .75rem;
+      color: var(--muted);
+      min-width: 52px;
+      text-align: right;
+    }
+
+    .lb-empty {
+      color: var(--muted);
+      text-align: center;
+      padding: 32px;
+      font-size: .95rem;
+    }
+
+    /* ── Toast notification ── */
+    #toast {
+      position: fixed;
+      bottom: 28px;
+      left: 50%;
+      transform: translateX(-50%) translateY(80px);
+      background: var(--card2);
+      border: 1px solid rgba(255,255,255,.12);
+      color: var(--text);
+      padding: 10px 22px;
+      border-radius: 999px;
+      font-size: .9rem;
+      font-weight: 600;
+      transition: transform .3s ease;
+      z-index: 100;
+      white-space: nowrap;
+    }
+    #toast.show { transform: translateX(-50%) translateY(0); }
+
+    /* ── Responsive ── */
+
+    /* Tablet: tighten spacing */
+    @media (max-width: 640px) {
+      body { padding: 16px 12px 48px; }
+      header { margin-bottom: 20px; }
+      header p { font-size: .85rem; }
+      #arena { gap: 10px; margin-bottom: 16px; }
+      #controls { gap: 8px; margin-bottom: 28px; }
+      button { padding: 9px 20px; font-size: .9rem; }
+      .poke-card { padding: 20px 14px 16px; }
+      .poke-card img { width: 130px; height: 130px; }
+      .poke-name { font-size: 1.1rem; }
+      .vs-badge { font-size: 1.3rem; }
+      .tie-btn { padding: 7px 14px; font-size: .82rem; }
+    }
+
+    /* Phone: stack cards vertically, VS row goes horizontal */
+    @media (max-width: 480px) {
+      #arena {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 0;
+      }
+
+      .poke-card {
+        max-width: 100%;
+        flex-direction: row;          /* image left, info right */
+        padding: 16px;
+        gap: 16px;
+        text-align: left;
+        align-items: center;
+      }
+      .poke-card img {
+        width: 90px;
+        height: 90px;
+        flex-shrink: 0;
+      }
+      .poke-card:hover img { transform: none; } /* skip lift on touch */
+
+      /* info stack on the right */
+      .poke-card-info {
+        align-items: flex-start;
+        gap: 6px;
+      }
+      .type-badges { justify-content: flex-start; }
+      .poke-name { font-size: 1.05rem; }
+
+      /* VS + Tie row between the two cards */
+      .vs-col {
+        flex-direction: row;
+        justify-content: center;
+        gap: 16px;
+        padding: 10px 0;
+      }
+      .vs-badge { font-size: 1.1rem; }
+
+      .lb-votes { display: none; } /* hide W/D/L on tiny screens */
+    }
+
+    /* Very small phones */
+    @media (max-width: 360px) {
+      .poke-card img { width: 72px; height: 72px; }
+      .poke-name { font-size: .95rem; }
+      button { padding: 8px 14px; font-size: .82rem; }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>Pokémon ELO Ranker</h1>
+  <p>Click the Pokémon you prefer to update their ELO ratings</p>
+</header>
+
+<div id="arena">
+  <div class="spinner"></div>
+</div>
+
+<div id="controls">
+  <button id="btn-skip">⟳ Skip</button>
+  <button id="btn-reset">↺ Reset All</button>
+</div>
+
+<section id="leaderboard-section">
+  <h2>🏆 Leaderboard <span id="lb-count"></span></h2>
+  <div id="leaderboard"><p class="lb-empty">Vote on some Pokémon to start the leaderboard!</p></div>
+</section>
+
+<div id="toast"></div>
+
+<script>
+  /* ─────────────────────────────────────────
+     Constants
+  ───────────────────────────────────────── */
+  const DEFAULT_ELO  = 1000;
+  const K_FACTOR     = 32;
+  const STORAGE_KEY  = 'pokemon-elo-v1';
+  const IDS_KEY      = 'pokemon-elo-ids-v3';
+  const IMG_BASE     = 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/';
+
+  // Fragments: exclude any Pokémon whose name contains these substrings
+  const COSMETIC_FRAGMENTS = [
+    'totem',          // oversized in-game variant, same stats
+    'original-color', // Magearna cosmetic
+    'battle-bond',    // Ash-Greninja — Battle Bond ability, in-battle only
+    'spiky',          // Spiky-eared Pichu
+    'gmax',           // Gigantamax — same base stats as base form
+    '-cap',           // Pikachu hat variants
+    '-starter',       // Pikachu/Eevee starter variants
+    'east-sea',       // Shellos/Gastrodon east — same stats as west
+    '-summer',        // Deerling/Sawsbuck seasonal
+    '-autumn',
+    '-winter',
+    'gulping',        // Cramorant — Gulp Missile ability, in-battle
+    'gorging',
+    '-dada',          // Zarude-Dada cosmetic
+    'blue-striped',   // Basculin-Blue-Striped — same stats as red
+    'hangry',         // Morpeko-Hangry — Hunger Switch ability, in-battle
+    '-zen',           // Darmanitan Zen Mode — Zen Mode ability, in-battle
+  ];
+
+  // Exact names: cosmetic or ability-triggered forms to exclude
+  const COSMETIC_EXACT = new Set([
+    // Unown letters
+    'unown-a','unown-b','unown-c','unown-d','unown-e','unown-f','unown-g',
+    'unown-h','unown-i','unown-j','unown-k','unown-l','unown-m','unown-n',
+    'unown-o','unown-p','unown-q','unown-r','unown-s','unown-t','unown-u',
+    'unown-v','unown-w','unown-x','unown-y','unown-z',
+    'unown-exclamation','unown-question',
+    // Spinda
+    'spinda',
+    // Minior cores (same stats, different appearance to meteor form)
+    'minior-red-core','minior-orange-core','minior-yellow-core','minior-green-core',
+    'minior-blue-core','minior-indigo-core','minior-violet-core',
+    // Alcremie decorations
+    'alcremie-ruby-cream','alcremie-matcha-cream','alcremie-mint-cream',
+    'alcremie-lemon-cream','alcremie-salted-cream','alcremie-ruby-swirl',
+    'alcremie-caramel-swirl','alcremie-rainbow-swirl',
+    // Vivillon patterns
+    'vivillon-polar','vivillon-tundra','vivillon-continental','vivillon-garden',
+    'vivillon-elegant','vivillon-meadow','vivillon-modern','vivillon-marine',
+    'vivillon-archipelago','vivillon-high-plains','vivillon-sandstorm',
+    'vivillon-river','vivillon-monsoon','vivillon-savanna','vivillon-sun',
+    'vivillon-ocean','vivillon-jungle','vivillon-fancy','vivillon-poke-ball',
+    // Flabébé/Floette/Florges colour variants
+    'flabebe-orange-flower','flabebe-yellow-flower','flabebe-white-flower','flabebe-blue-flower',
+    'floette-orange-flower','floette-yellow-flower','floette-white-flower','floette-blue-flower',
+    'florges-orange-flower','florges-yellow-flower','florges-white-flower','florges-blue-flower',
+    // Genesect drive forms — same stats/typing, only Techno Blast type changes
+    'genesect-douse','genesect-shock','genesect-burn','genesect-chill',
+    // Keldeo-Resolute — same stats/typing as Ordinary
+    'keldeo-resolute',
+    // Cherrim-Sunshine — Flower Gift ability, in-battle
+    'cherrim-sunshine',
+    // Xerneas modes — in-battle appearance toggle, same stats
+    'xerneas-active','xerneas-neutral',
+    // Ability-triggered in-battle forms
+    'aegislash-blade',      // Stance Change
+    'wishiwashi-school',    // Schooling
+    'mimikyu-busted',       // Disguise
+    'eiscue-noice-face',    // Ice Face
+    'palafin-hero',         // Zero to Hero
+    'zygarde-complete',     // Power Construct
+    'castform-sunny','castform-rainy','castform-snowy', // Forecast
+  ]);
+
+  /* ─────────────────────────────────────────
+     State
+  ───────────────────────────────────────── */
+  let ratings    = loadRatings(); // { id: { elo, wins, losses, draws, name, types } }
+  let pokemonIds = [];            // valid ID pool loaded from API
+  let current    = [null, null];  // two Pokémon objects currently shown
+  let loading    = false;
+
+  /* ─────────────────────────────────────────
+     ELO helpers
+  ───────────────────────────────────────── */
+  function expectedScore(ratingA, ratingB) {
+    return 1 / (1 + Math.pow(10, (ratingB - ratingA) / 400));
+  }
+
+  function updateElo(winnerId, loserId) {
+    const winnerElo = getElo(winnerId);
+    const loserElo  = getElo(loserId);
+    const expW = expectedScore(winnerElo, loserElo);
+    const expL = expectedScore(loserElo, winnerElo);
+
+    setElo(winnerId, winnerElo + K_FACTOR * (1 - expW));
+    setElo(loserId,  loserElo  + K_FACTOR * (0 - expL));
+
+    ratings[winnerId].wins   = (ratings[winnerId].wins   || 0) + 1;
+    ratings[loserId].losses  = (ratings[loserId].losses  || 0) + 1;
+
+    saveRatings();
+  }
+
+  function updateEloDraw(idA, idB) {
+    const eloA = getElo(idA);
+    const eloB = getElo(idB);
+    const expA = expectedScore(eloA, eloB);
+    const expB = expectedScore(eloB, eloA);
+
+    setElo(idA, eloA + K_FACTOR * (0.5 - expA));
+    setElo(idB, eloB + K_FACTOR * (0.5 - expB));
+
+    ratings[idA].draws = (ratings[idA].draws || 0) + 1;
+    ratings[idB].draws = (ratings[idB].draws || 0) + 1;
+
+    saveRatings();
+  }
+
+  function getElo(id) {
+    return ratings[id]?.elo ?? DEFAULT_ELO;
+  }
+
+  function setElo(id, elo) {
+    if (!ratings[id]) ratings[id] = {};
+    ratings[id].elo = Math.round(elo);
+  }
+
+  /* ─────────────────────────────────────────
+     LocalStorage
+  ───────────────────────────────────────── */
+  function loadRatings() {
+    try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || {}; }
+    catch { return {}; }
+  }
+
+  function saveRatings() {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(ratings));
+  }
+
+  /* ─────────────────────────────────────────
+     PokéAPI fetch
+  ───────────────────────────────────────── */
+  async function fetchPokemon(id) {
+    const res  = await fetch(`https://pokeapi.co/api/v2/pokemon/${id}`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    return {
+      id,
+      name:  data.name,
+      types: data.types.map(t => t.type.name),
+      image: `${IMG_BASE}${id}.png`,
+    };
+  }
+
+  function isCosmetic(name) {
+    if (COSMETIC_EXACT.has(name)) return true;
+    return COSMETIC_FRAGMENTS.some(f => name.includes(f));
+  }
+
+  function idFromUrl(url) {
+    return parseInt(url.replace(/\/$/, '').split('/').pop(), 10);
+  }
+
+  async function loadPokemonIds() {
+    // Return cached list if available
+    try {
+      const cached = JSON.parse(localStorage.getItem(IDS_KEY));
+      if (Array.isArray(cached) && cached.length > 100) return cached;
+    } catch { /* fall through */ }
+
+    const res  = await fetch('https://pokeapi.co/api/v2/pokemon?limit=2000');
+    const data = await res.json();
+
+    const ids = data.results
+      .filter(p => !isCosmetic(p.name))
+      .map(p => idFromUrl(p.url))
+      .filter(id => !isNaN(id));
+
+    localStorage.setItem(IDS_KEY, JSON.stringify(ids));
+    return ids;
+  }
+
+  function randomId(exclude = []) {
+    const pool = pokemonIds.filter(id => !exclude.includes(id));
+    return pool[Math.floor(Math.random() * pool.length)];
+  }
+
+  async function loadPair() {
+    if (loading) return;
+    loading = true;
+    renderArenaLoading();
+
+    try {
+      if (!pokemonIds.length) pokemonIds = await loadPokemonIds();
+
+      const idA = randomId();
+      const idB = randomId([idA]);
+
+      const [a, b] = await Promise.all([fetchPokemon(idA), fetchPokemon(idB)]);
+      storeMetadata(a);
+      storeMetadata(b);
+      current = [a, b];
+      renderArena(a, b);
+    } catch (err) {
+      renderArenaError(err.message);
+    } finally {
+      loading = false;
+    }
+  }
+
+  function storeMetadata(poke) {
+    if (!ratings[poke.id]) ratings[poke.id] = {};
+    ratings[poke.id].name  = poke.name;
+    ratings[poke.id].types = poke.types;
+    // Don't overwrite existing elo
+    if (ratings[poke.id].elo === undefined) ratings[poke.id].elo = DEFAULT_ELO;
+  }
+
+  /* ─────────────────────────────────────────
+     Render helpers
+  ───────────────────────────────────────── */
+  function buildCard(poke) {
+    const card = document.createElement('div');
+    card.className = 'poke-card';
+    card.setAttribute('role', 'button');
+    card.setAttribute('tabindex', '0');
+    card.setAttribute('aria-label', `Vote for ${poke.name}`);
+
+    const img = document.createElement('img');
+    img.src   = poke.image;
+    img.alt   = poke.name;
+    img.width = 160; img.height = 160;
+    img.onerror = () => { img.src = `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/${poke.id}.png`; };
+
+    const name = document.createElement('div');
+    name.className = 'poke-name';
+    name.textContent = poke.name;
+
+    const eloEl = document.createElement('div');
+    eloEl.className = 'poke-elo';
+    eloEl.textContent = `ELO ${getElo(poke.id)}`;
+
+    const types = document.createElement('div');
+    types.className = 'type-badges';
+    poke.types.forEach(t => {
+      const b = document.createElement('span');
+      b.className = `type-badge type-${t}`;
+      b.textContent = t;
+      types.appendChild(b);
+    });
+
+    const info = document.createElement('div');
+    info.className = 'poke-card-info';
+    info.append(name, eloEl, types);
+
+    card.append(img, info);
+    card.onclick = () => onVote(poke);
+    card.onkeydown = (e) => { if (e.key === 'Enter' || e.key === ' ') onVote(poke); };
+    return card;
+  }
+
+  function renderArena(a, b) {
+    const arena = document.getElementById('arena');
+    arena.innerHTML = '';
+
+    const vsCol = document.createElement('div');
+    vsCol.className = 'vs-col';
+
+    const vs = document.createElement('div');
+    vs.className = 'vs-badge';
+    vs.textContent = 'VS';
+
+    const tieBtn = document.createElement('div');
+    tieBtn.className = 'tie-btn';
+    tieBtn.setAttribute('role', 'button');
+    tieBtn.setAttribute('tabindex', '0');
+    tieBtn.textContent = '🤝 Tie';
+    tieBtn.onclick = onTie;
+    tieBtn.onkeydown = (e) => { if (e.key === 'Enter' || e.key === ' ') onTie(); };
+
+    vsCol.append(vs, tieBtn);
+    arena.append(buildCard(a), vsCol, buildCard(b));
+  }
+
+  function renderArenaLoading() {
+    const arena = document.getElementById('arena');
+    arena.innerHTML = '<div class="spinner"></div>';
+  }
+
+  function renderArenaError(msg) {
+    const arena = document.getElementById('arena');
+    arena.innerHTML = `<p style="color:#ff6b6b;text-align:center">Error loading Pokémon: ${msg}<br><button id="btn-retry" style="margin-top:12px;background:var(--red);color:#fff">Retry</button></p>`;
+    document.getElementById('btn-retry')?.addEventListener('click', loadPair);
+  }
+
+  /* ─────────────────────────────────────────
+     Leaderboard
+  ───────────────────────────────────────── */
+  function renderLeaderboard() {
+    const lb = document.getElementById('leaderboard');
+    const countEl = document.getElementById('lb-count');
+
+    const entries = Object.entries(ratings)
+      .filter(([, v]) => v.name)
+      .sort(([, a], [, b]) => (b.elo ?? DEFAULT_ELO) - (a.elo ?? DEFAULT_ELO));
+
+    countEl.textContent = entries.length ? `(${entries.length})` : '';
+
+    if (!entries.length) {
+      lb.innerHTML = '<p class="lb-empty">Vote on some Pokémon to start the leaderboard!</p>';
+      return;
+    }
+
+    lb.innerHTML = '';
+    entries.forEach(([id, data], i) => {
+      const row = document.createElement('div');
+      row.className = 'lb-row';
+
+      const rank = document.createElement('div');
+      rank.className = 'lb-rank' + (i === 0 ? ' gold' : i === 1 ? ' silver' : i === 2 ? ' bronze' : '');
+      rank.textContent = `#${i + 1}`;
+
+      const img = document.createElement('img');
+      img.className = 'lb-img';
+      img.src = `${IMG_BASE}${id}.png`;
+      img.alt = data.name;
+      img.onerror = () => { img.src = `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/${id}.png`; };
+
+      const name = document.createElement('div');
+      name.className = 'lb-name';
+      name.textContent = data.name;
+
+      const elo = document.createElement('div');
+      elo.className = 'lb-elo';
+      elo.textContent = data.elo ?? DEFAULT_ELO;
+
+      const votes = document.createElement('div');
+      votes.className = 'lb-votes';
+      const w = data.wins || 0;
+      const l = data.losses || 0;
+      const d = data.draws || 0;
+      votes.textContent = `${w}W ${d}D ${l}L`;
+
+      row.append(rank, img, name, elo, votes);
+      lb.appendChild(row);
+    });
+  }
+
+  /* ─────────────────────────────────────────
+     Vote handler
+  ───────────────────────────────────────── */
+  function onVote(winner) {
+    const loser = current.find(p => p.id !== winner.id);
+    if (!loser) return;
+
+    updateElo(winner.id, loser.id);
+    showToast(`${capitalize(winner.name)} wins! ELO → ${getElo(winner.id)}`);
+    renderLeaderboard();
+    loadPair();
+  }
+
+  function onTie() {
+    const [a, b] = current;
+    if (!a || !b) return;
+
+    updateEloDraw(a.id, b.id);
+    showToast(`It's a tie! ${capitalize(a.name)} & ${capitalize(b.name)} draw.`);
+    renderLeaderboard();
+    loadPair();
+  }
+
+  /* ─────────────────────────────────────────
+     Utility
+  ───────────────────────────────────────── */
+  function capitalize(str) {
+    return str.charAt(0).toUpperCase() + str.slice(1);
+  }
+
+  let toastTimer;
+  function showToast(msg) {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => t.classList.remove('show'), 2400);
+  }
+
+  /* ─────────────────────────────────────────
+     Event listeners
+  ───────────────────────────────────────── */
+  document.getElementById('btn-skip').addEventListener('click', () => {
+    if (!loading) loadPair();
+  });
+
+  document.getElementById('btn-reset').addEventListener('click', () => {
+    if (!confirm('Reset ALL ELO scores? This cannot be undone.')) return;
+    ratings = {};
+    saveRatings();
+    renderLeaderboard();
+    showToast('All scores reset!');
+    loadPair();
+  });
+
+  /* ─────────────────────────────────────────
+     Init
+  ───────────────────────────────────────── */
+  renderLeaderboard();
+  loadPair();
+</script>
+</body>
+</html>
