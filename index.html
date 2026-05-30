@@ -242,6 +242,7 @@
     }
     .mode-btn:hover  { color: var(--text); transform: none; box-shadow: none; }
     .mode-btn.active { background: var(--blue); color: #fff; }
+    .mode-btn.locked { opacity: .35; cursor: not-allowed; pointer-events: none; }
 
     /* ── Controls ── */
     #controls {
@@ -321,8 +322,29 @@
       align-items: center;
       gap: 14px;
       transition: background .15s;
+      cursor: pointer;
     }
     .lb-row:hover { background: var(--card2); }
+    .lb-row.selected {
+      background: var(--card2);
+      border: 1px solid var(--yellow);
+      box-shadow: 0 0 12px rgba(255,222,0,.15);
+    }
+
+    .poke-card.pinned {
+      border-color: var(--yellow);
+      box-shadow: 0 0 24px rgba(255,222,0,.25);
+    }
+    .pin-label {
+      position: absolute;
+      top: 8px;
+      right: 10px;
+      font-size: .68rem;
+      font-weight: 700;
+      color: var(--yellow);
+      letter-spacing: .5px;
+      pointer-events: none;
+    }
 
     .lb-rank {
       font-size: .85rem;
@@ -675,6 +697,8 @@
   let current    = [null, null];  // two Pokémon objects currently shown
   let loading    = false;
   let mode       = 'all';        // 'all' | 'unseen' | 'top100' | 'top50' | 'top25'
+  let pinnedId   = null;          // leaderboard-selected Pokémon always shown on left
+  let pinnedPoke = null;          // cached fetch result for the pinned Pokémon
 
   /* ─────────────────────────────────────────
      ELO helpers
@@ -816,6 +840,22 @@
     return pool[Math.floor(Math.random() * pool.length)];
   }
 
+  function setPin(id) {
+    pinnedId   = id;
+    pinnedPoke = null; // force re-fetch
+    mode = 'all';
+    document.querySelectorAll('.mode-btn').forEach(b => {
+      b.classList.toggle('active', b.dataset.mode === 'all');
+      b.classList.add('locked');
+    });
+  }
+
+  function clearPin() {
+    pinnedId   = null;
+    pinnedPoke = null;
+    document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('locked'));
+  }
+
   async function loadPair() {
     if (loading) return;
     loading = true;
@@ -828,18 +868,31 @@
         renderLeaderboard();
       }
 
-      const idA = randomId();
-      const idB = idA !== null ? randomId([idA]) : null;
+      let a, b;
 
-      if (idA === null || idB === null) {
-        const label = { unseen: 'unseen Pokémon', top25: 'Top 25', top50: 'Top 50', top100: 'Top 100' }[mode] || '';
-        renderArenaEmpty(`Not enough ${label} Pokémon to match up — vote on more first!`);
-        return;
+      if (pinnedId !== null) {
+        if (!pinnedPoke) {
+          pinnedPoke = await fetchPokemon(pinnedId);
+          storeMetadata(pinnedPoke);
+        }
+        a = pinnedPoke;
+        const idB = randomId([pinnedId]);
+        if (idB === null) { renderArenaEmpty('No opponents available for this mode.'); return; }
+        b = await fetchPokemon(idB);
+        storeMetadata(b);
+      } else {
+        const idA = randomId();
+        const idB = idA !== null ? randomId([idA]) : null;
+        if (idA === null || idB === null) {
+          const label = { unseen: 'unseen Pokémon', top25: 'Top 25', top50: 'Top 50', top100: 'Top 100' }[mode] || '';
+          renderArenaEmpty(`Not enough ${label} Pokémon to match up — vote on more first!`);
+          return;
+        }
+        [a, b] = await Promise.all([fetchPokemon(idA), fetchPokemon(idB)]);
+        storeMetadata(a);
+        storeMetadata(b);
       }
 
-      const [a, b] = await Promise.all([fetchPokemon(idA), fetchPokemon(idB)]);
-      storeMetadata(a);
-      storeMetadata(b);
       current = [a, b];
       renderArena(a, b);
     } catch (err) {
@@ -872,12 +925,19 @@
   /* ─────────────────────────────────────────
      Render helpers
   ───────────────────────────────────────── */
-  function buildCard(poke) {
+  function buildCard(poke, isPinned = false) {
     const card = document.createElement('div');
-    card.className = 'poke-card';
+    card.className = 'poke-card' + (isPinned ? ' pinned' : '');
     card.setAttribute('role', 'button');
     card.setAttribute('tabindex', '0');
     card.setAttribute('aria-label', `Vote for ${poke.name}`);
+
+    if (isPinned) {
+      const pin = document.createElement('div');
+      pin.className = 'pin-label';
+      pin.textContent = '📌 PINNED';
+      card.appendChild(pin);
+    }
 
     const img = document.createElement('img');
     img.src   = poke.image;
@@ -936,7 +996,7 @@
     tieBtn.onkeydown = (e) => { if (e.key === 'Enter' || e.key === ' ') onTie(); };
 
     vsCol.append(vs, tieBtn);
-    arena.append(buildCard(a), vsCol, buildCard(b));
+    arena.append(buildCard(a, pinnedId === a.id), vsCol, buildCard(b, pinnedId === b.id));
   }
 
   function renderArenaLoading() {
@@ -975,8 +1035,20 @@
 
     lb.innerHTML = '';
     entries.forEach(([id, data], i) => {
+      const numId = Number(id);
       const row = document.createElement('div');
-      row.className = 'lb-row';
+      row.className = 'lb-row' + (numId === pinnedId ? ' selected' : '');
+      row.onclick = () => {
+        if (numId === pinnedId) {
+          clearPin();
+          renderLeaderboard();
+          loadPair();
+        } else {
+          setPin(numId);
+          renderLeaderboard();
+          loadPair();
+        }
+      };
 
       const rank = document.createElement('div');
       rank.className = 'lb-rank' + (i === 0 ? ' gold' : i === 1 ? ' silver' : i === 2 ? ' bronze' : '');
