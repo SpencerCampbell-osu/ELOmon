@@ -640,15 +640,28 @@
   }
 
   /* ─────────────────────────────────────────
-     LocalStorage
+     Storage (safe wrapper — falls back to
+     memory when localStorage is unavailable)
   ───────────────────────────────────────── */
+  const memStore = {};
+
+  function storageGet(key) {
+    try { return localStorage.getItem(key); }
+    catch { return memStore[key] ?? null; }
+  }
+
+  function storageSet(key, value) {
+    try { localStorage.setItem(key, value); }
+    catch { memStore[key] = value; }
+  }
+
   function loadRatings() {
-    try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || {}; }
+    try { return JSON.parse(storageGet(STORAGE_KEY)) || {}; }
     catch { return {}; }
   }
 
   function saveRatings() {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(ratings));
+    storageSet(STORAGE_KEY, JSON.stringify(ratings));
   }
 
   /* ─────────────────────────────────────────
@@ -679,7 +692,7 @@
   async function loadPokemonIds() {
     // Return cached list if available
     try {
-      const cached = JSON.parse(localStorage.getItem(IDS_KEY));
+      const cached = JSON.parse(storageGet(IDS_KEY));
       if (Array.isArray(cached) && cached.length > 100) return cached;
     } catch { /* fall through */ }
 
@@ -691,7 +704,7 @@
       .map(p => idFromUrl(p.url))
       .filter(id => !isNaN(id));
 
-    localStorage.setItem(IDS_KEY, JSON.stringify(ids));
+    storageSet(IDS_KEY, JSON.stringify(ids));
     return ids;
   }
 
