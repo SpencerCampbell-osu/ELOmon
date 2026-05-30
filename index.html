@@ -449,7 +449,7 @@
   const DEFAULT_ELO  = 1000;
   const K_FACTOR     = 32;
   const STORAGE_KEY  = 'pokemon-elo-v1';
-  const IDS_KEY      = 'pokemon-elo-ids-v3';
+  const IDS_KEY      = 'pokemon-elo-ids-v4';
   const IMG_BASE     = 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/';
 
   // Fragments: exclude any Pokémon whose name contains these substrings
@@ -471,6 +471,8 @@
     'blue-striped',   // Basculin-Blue-Striped — same stats as red
     'hangry',         // Morpeko-Hangry — Hunger Switch ability, in-battle
     '-zen',           // Darmanitan Zen Mode — Zen Mode ability, in-battle
+    '-mode',          // Miraidon mobility forms (drive/aquatic/glide/low-power)
+    '-build',         // Koraidon mobility forms (sprinting/swimming/gliding/limited)
   ];
 
   // Exact names: cosmetic or ability-triggered forms to exclude
