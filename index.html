@@ -269,6 +269,16 @@
       color: var(--text);
       border: 1px solid rgba(255,255,255,.15);
     }
+    #btn-export {
+      background: rgba(59,76,202,.2);
+      color: #a0aaff;
+      border: 1px solid rgba(59,76,202,.4);
+    }
+    #btn-import {
+      background: rgba(59,76,202,.2);
+      color: #a0aaff;
+      border: 1px solid rgba(59,76,202,.4);
+    }
     #btn-reset {
       background: rgba(204,0,0,.2);
       color: #ff6b6b;
@@ -358,6 +368,64 @@
       padding: 32px;
       font-size: .95rem;
     }
+
+    /* ── Share modal ── */
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,.65);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 200;
+      padding: 16px;
+    }
+    .modal-overlay[hidden] { display: none; }
+
+    .modal {
+      background: var(--card);
+      border: 1px solid rgba(255,255,255,.1);
+      border-radius: var(--radius);
+      padding: 24px;
+      width: 100%;
+      max-width: 520px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      box-shadow: var(--shadow);
+    }
+    .modal h3 {
+      font-size: 1.1rem;
+      font-weight: 800;
+      margin: 0;
+    }
+    .modal p {
+      font-size: .85rem;
+      color: var(--muted);
+      margin: 0;
+    }
+    .modal textarea {
+      width: 100%;
+      background: var(--dark);
+      border: 1px solid rgba(255,255,255,.12);
+      border-radius: 10px;
+      color: var(--text);
+      font-family: monospace;
+      font-size: .75rem;
+      padding: 10px 12px;
+      resize: vertical;
+      min-height: 110px;
+      outline: none;
+    }
+    .modal textarea:focus { border-color: var(--blue); }
+    .modal-btns {
+      display: flex;
+      gap: 10px;
+      justify-content: flex-end;
+    }
+    .modal-btns button { padding: 9px 22px; font-size: .9rem; }
+    #modal-action { background: var(--blue); color: #fff; }
+    #modal-cancel { background: var(--card2); color: var(--text); border: 1px solid rgba(255,255,255,.12); }
 
     /* ── Toast notification ── */
     #toast {
@@ -467,7 +535,21 @@
 
 <div id="controls">
   <button id="btn-skip">⟳ Skip</button>
+  <button id="btn-export">↑ Export</button>
+  <button id="btn-import">↓ Import</button>
   <button id="btn-reset">↺ Reset All</button>
+</div>
+
+<div id="share-modal" class="modal-overlay" hidden>
+  <div class="modal">
+    <h3 id="modal-title">Export State</h3>
+    <p id="modal-desc">Copy this string to save or share your leaderboard.</p>
+    <textarea id="modal-textarea" spellcheck="false"></textarea>
+    <div class="modal-btns">
+      <button id="modal-cancel">Cancel</button>
+      <button id="modal-action">Copy</button>
+    </div>
+  </div>
 </div>
 
 <section id="leaderboard-section">
@@ -481,10 +563,11 @@
   /* ─────────────────────────────────────────
      Constants
   ───────────────────────────────────────── */
-  const DEFAULT_ELO  = 1000;
-  const K_FACTOR     = 32;
-  const STORAGE_KEY  = 'pokemon-elo-v1';
-  const IDS_KEY      = 'pokemon-elo-ids-v8';
+  const DEFAULT_ELO    = 1000;
+  const K_FACTOR       = 32;
+  const STORAGE_KEY    = 'pokemon-elo-v1';
+  const IDS_KEY        = 'pokemon-elo-ids-v9';
+  const EXPORT_PREFIX  = 'ELOmon:v1:';
   const IMG_BASE     = 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/';
 
   // Fragments: exclude any Pokémon whose name contains these substrings
@@ -953,6 +1036,100 @@
   }
 
   /* ─────────────────────────────────────────
+     Share encode / decode
+  ───────────────────────────────────────── */
+  function encodeState() {
+    const rows = Object.entries(ratings)
+      .filter(([, v]) => v.name && (v.wins || v.losses || v.draws))
+      .map(([id, v]) => [Number(id), v.elo ?? DEFAULT_ELO, v.wins||0, v.losses||0, v.draws||0, v.name]);
+    return EXPORT_PREFIX + btoa(encodeURIComponent(JSON.stringify(rows)));
+  }
+
+  function decodeState(str) {
+    if (!str.startsWith(EXPORT_PREFIX)) throw new Error('Not a valid ELOmon export string.');
+    const rows = JSON.parse(decodeURIComponent(atob(str.slice(EXPORT_PREFIX.length))));
+    if (!Array.isArray(rows)) throw new Error('Corrupt data.');
+    rows.forEach(([id, elo, w, l, d, name]) => {
+      if (!ratings[id]) ratings[id] = {};
+      Object.assign(ratings[id], { elo, wins: w, losses: l, draws: d, name });
+    });
+    saveRatings();
+  }
+
+  /* ─────────────────────────────────────────
+     Share modal
+  ───────────────────────────────────────── */
+  const shareModal    = document.getElementById('share-modal');
+  const modalTitle    = document.getElementById('modal-title');
+  const modalDesc     = document.getElementById('modal-desc');
+  const modalTextarea = document.getElementById('modal-textarea');
+  const modalAction   = document.getElementById('modal-action');
+  const modalCancel   = document.getElementById('modal-cancel');
+  let   modalMode     = 'export'; // 'export' | 'import'
+
+  function openExportModal() {
+    modalMode = 'export';
+    modalTitle.textContent = 'Export Leaderboard';
+    modalDesc.textContent  = 'Copy this string to save or share your leaderboard.';
+    modalTextarea.value    = encodeState();
+    modalTextarea.readOnly = true;
+    modalAction.textContent = 'Copy';
+    shareModal.removeAttribute('hidden');
+    modalTextarea.select();
+  }
+
+  function openImportModal() {
+    modalMode = 'import';
+    modalTitle.textContent  = 'Import Leaderboard';
+    modalDesc.textContent   = 'Paste an ELOmon export string. Imported scores are merged with your current scores.';
+    modalTextarea.value     = '';
+    modalTextarea.readOnly  = false;
+    modalAction.textContent = 'Load';
+    shareModal.removeAttribute('hidden');
+    modalTextarea.focus();
+  }
+
+  function closeModal() { shareModal.setAttribute('hidden', ''); }
+
+  modalAction.addEventListener('click', () => {
+    if (modalMode === 'export') {
+      navigator.clipboard?.writeText(modalTextarea.value).then(() => {
+        showToast('Copied to clipboard!');
+      }).catch(() => {
+        modalTextarea.select();
+        document.execCommand('copy');
+        showToast('Copied!');
+      });
+      closeModal();
+    } else {
+      try {
+        decodeState(modalTextarea.value.trim());
+        renderLeaderboard();
+        showToast('Leaderboard imported!');
+        closeModal();
+      } catch (e) {
+        showToast('Invalid export string.');
+      }
+    }
+  });
+
+  modalCancel.addEventListener('click', closeModal);
+  shareModal.addEventListener('click', e => { if (e.target === shareModal) closeModal(); });
+
+  // Load from URL hash on startup
+  function checkUrlHash() {
+    const hash = decodeURIComponent(window.location.hash.slice(1));
+    if (hash.startsWith(EXPORT_PREFIX)) {
+      try {
+        decodeState(hash);
+        renderLeaderboard();
+        showToast('Leaderboard loaded from URL!');
+        history.replaceState(null, '', window.location.pathname);
+      } catch { /* ignore malformed hash */ }
+    }
+  }
+
+  /* ─────────────────────────────────────────
      Utility
   ───────────────────────────────────────── */
   function capitalize(str) {
@@ -981,6 +1158,9 @@
     });
   });
 
+  document.getElementById('btn-export').addEventListener('click', openExportModal);
+  document.getElementById('btn-import').addEventListener('click', openImportModal);
+
   document.getElementById('btn-skip').addEventListener('click', () => {
     if (!loading) loadPair();
   });
@@ -997,6 +1177,7 @@
   /* ─────────────────────────────────────────
      Init
   ───────────────────────────────────────── */
+  checkUrlHash();
   renderLeaderboard();
   loadPair();
 </script>
